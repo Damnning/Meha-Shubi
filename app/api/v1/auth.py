@@ -5,8 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.user import UserCreate, UserRead, Token
 from app.core.security import create_access_token
-from app.services.user_service import UserService  # <-- Подключаем сервис
+from app.services.auth_service import AuthService
+from app.services.user_service import UserService
 
+from starlette.requests import Request
 router = APIRouter()
 
 
@@ -35,7 +37,6 @@ async def login(
 ):
     service = UserService(db)
 
-    # 1. Вся грязная работа с хешами внутри сервиса
     user = await service.authenticate_user(form_data.username, form_data.password)
 
     if not user:
@@ -45,8 +46,33 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 2. Роутер отвечает только за выдачу токена (это слой HTTP/Security)
     return {
         "access_token": create_access_token(user.id),
         "token_type": "bearer",
     }
+
+
+@router.get("/login/{provider}")
+async def social_login(
+        provider: str,
+        request: Request,
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    Редирект на VK/Yandex.
+    """
+    service = AuthService(db)
+    return await service.get_login_redirect(provider, request, "")
+
+
+@router.get("/callback/{provider}", name="auth_callback")
+async def auth_callback(
+        provider: str,
+        request: Request,
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    Обработка ответа от соцсети.
+    """
+    service = AuthService(db)
+    return await service.authenticate_social_user(provider, request)

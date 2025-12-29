@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 
 from app.db.session import engine, Base
 from app.api.v1 import categories, products, cart, orders, auth
+from starlette.middleware.sessions import SessionMiddleware
+from app.core.config import settings
 
 # Функция lifespan заменяет старые события @app.on_event("startup")
 @asynccontextmanager
@@ -21,6 +23,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
 
 # Подключаем роутеры
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["Categories"])

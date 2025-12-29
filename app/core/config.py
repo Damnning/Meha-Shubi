@@ -6,6 +6,7 @@ import os
 
 
 class Settings(BaseSettings):
+    BASE_URL: str = os.getenv("BASE_URL")
     DB_USER: str = os.getenv("DB_USER")
     DB_PASS: str = os.getenv("DB_PASS")
     DB_HOST: str = os.getenv("DB_HOST")
