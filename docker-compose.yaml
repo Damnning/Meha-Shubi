@@ -1,6 +1,20 @@
-version: '3.8'
-
 services:
+  app:
+    build: .
+    container_name: shop_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - minio
+    environment:
+      # Важно: внутри докера хосты другие
+      DB_HOST: db
+      S3_ENDPOINT_URL: http://minio:9000
+
   db:
     image: postgres:15-alpine
     container_name: shop_db
@@ -23,8 +37,8 @@ services:
       MINIO_ROOT_USER: minio_admin
       MINIO_ROOT_PASSWORD: minio_password
     ports:
-      - "9000:9000"  # API port
-      - "9001:9001"  # Console UI port
+      - "9000:9000"
+      - "9001:9001"
     volumes:
       - minio_data:/data
 

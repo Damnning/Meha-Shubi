@@ -2,16 +2,16 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
+
 class ProductBase(BaseModel):
     name: str
-    price: float = Field(..., gt=0)  # Цена должна быть больше 0
+    price: float = Field(..., gt=0)
     category_id: int
-    specs: Dict[str, Any] = {}  # JSON характеристики
+    specs: Dict[str, Any] = {}
 
 
 class ProductCreate(ProductBase):
-    # Описание и картинка могут отсутствовать при создании,
-    # так как описание генерит ИИ, а картинку грузим отдельным полем/шагом
+    # Теперь мы явно ждем описание от фронтенда (оно может быть пустым)
     description: Optional[str] = None
 
 
@@ -43,3 +43,21 @@ class ProductFilter(BaseModel):
     sort_by: SortOption = SortOption.NEWEST
     page: int = 1
     limit: int = 10
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    specs: Optional[Dict[str, Any]] = None
+    category_id: Optional[int] = None
+    image_url: Optional[str] = None
+
+
+class GenerateDescriptionRequest(BaseModel):
+    name: str
+    specs: Dict[str, Any]
+
+
+class GenerateDescriptionResponse(BaseModel):
+    description: str

@@ -1,6 +1,7 @@
 import datetime
 from typing import List, Optional
-from sqlalchemy import String, ForeignKey, JSON, Integer, Float, DateTime, func, Text
+from sqlalchemy import String, ForeignKey, Integer, Float, DateTime, func, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
@@ -44,7 +45,7 @@ class Product(Base):
     image_url: Mapped[Optional[str]] = mapped_column(String)  # Ссылка на S3
 
     # Характеристики храним в JSONB для гибкости (цвет, размер, тип меха)
-    specs: Mapped[dict] = mapped_column(JSON, default={})
+    specs: Mapped[dict] = mapped_column(JSONB, default={})
 
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     category: Mapped["Category"] = relationship(back_populates="products")

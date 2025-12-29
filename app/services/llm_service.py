@@ -5,7 +5,7 @@ from app.core.config import settings
 
 class LLMService:
     """
-    Базовый интерфейс для генерации текста.
+    Базовый интерфейс.
     """
 
     async def generate_description(self, product_name: str, specs: dict) -> str:
@@ -14,55 +14,80 @@ class LLMService:
 
 class MockLLMService(LLMService):
     """
-    Заглушка для тестов
+    Заглушка. Работает, если нет токена.
     """
 
     async def generate_description(self, product_name: str, specs: dict) -> str:
-        # Имитация задержки сети
         await asyncio.sleep(0.5)
         specs_str = ", ".join([f"{k}: {v}" for k, v in specs.items()])
         return (
-            f"ОПИСАНИЕ ОТ AI (MOCK): Роскошный товар '{product_name}'. "
-            f"Обладает уникальными характеристиками: {specs_str}. "
-            "Идеальный выбор для ценителей качества!"
+            f"ОПИСАНИЕ ОТ AI (MOCK): Это заглушка, так как токен OpenRouter не найден. "
+            f"Товар '{product_name}' с характеристиками: {specs_str}."
         )
 
 
-class OpenAILLMService(LLMService):
+class OpenRouterLLMService(LLMService):
     """
-    Реальная интеграция с OpenAI.
+    Реальная интеграция с OpenRouter (доступ к GPT-4, Claude 3, Llama 3 и др).
     """
 
     def __init__(self):
-        # API key берется из os.environ["OPENAI_API_KEY"] автоматически библиотекой,
-        # либо можно передать явно: api_key=settings.OPENAI_API_KEY
-        self.client = AsyncOpenAI(api_key="your-api-key-here-or-from-env")
+        self.client = AsyncOpenAI(
+            api_key=settings.OPENROUTER_KEY,
+            base_url="https://openrouter.ai/api/v1"
+        )
+        # Модель можно поменять на любую доступную в OpenRouter
+        # "mistralai/mistral-7b-instruct:free" - полностью бесплатная
+        # "openai/gpt-3.5-turbo" - дешевая
+        # "meta-llama/llama-3-8b-instruct:free" - тоже бывает бесплатной
+        self.model = settings.LLM_MODEL
 
     async def generate_description(self, product_name: str, specs: dict) -> str:
-        specs_str = ", ".join([f"{k}: {v}" for k, v in specs.items()])
-        prompt = (
-            f"Напиши продающее, привлекательное описание для товара интернет-магазина мехов.\n"
+        # Формируем красивый промпт
+        specs_str = "\n".join([f"- {k}: {v}" for k, v in specs.items()])
+
+        system_prompt = (
+            "Ты опытный копирайтер для интернет-магазина дорогих товаров (меха, шубы). "
+            "Твоя задача — написать привлекательное, продающее описание товара на русском языке. "
+            "Используй элегантный стиль, подчеркни качество."
+        )
+
+        user_prompt = (
+            f"Напиши описание для товара:\n"
             f"Название: {product_name}\n"
-            f"Характеристики: {specs_str}\n"
-            f"Описание должно быть длиной 2-3 предложения."
+            f"Характеристики:\n{specs_str}\n\n"
+            f"Требования: Не более 3-4 предложений. Без вводных фраз ('Вот описание...'). Только текст."
         )
 
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-3.5-turbo",  # Или gpt-4
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=150
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=300,
+                temperature=0.7,
+                # OpenRouter требует эти заголовки для корректной работы и статистики
+                extra_headers={
+                    "HTTP-Referer": "http://localhost:8000",  # URL твоего сайта
+                    "X-Title": "Fur Shop API",  # Название твоего приложения
+                },
             )
             return response.choices[0].message.content.strip()
+
         except Exception as e:
-            print(f"LLM Error: {e}")
-            return "Описание временно недоступно."
+            print(f"OpenRouter Error: {e}")
+            # Возвращаем заглушку в случае ошибки, чтобы фронтенд не падал
+            return f"Не удалось сгенерировать описание (Ошибка AI). Характеристики: {specs_str}"
 
 
-# Фабрика: возвращает нужный сервис в зависимости от настроек
 def get_llm_service() -> LLMService:
-    # Можно вынести флаг USE_MOCK_LLM в конфиг
-    use_mock = True
-    if use_mock:
-        return MockLLMService()
-    return OpenAILLMService()
+    """
+    Фабрика: если токен есть в .env - возвращаем OpenRouter, иначе Mock.
+    """
+    if settings.OPENROUTER_KEY and settings.OPENROUTER_KEY.strip():
+        return OpenRouterLLMService()
+
+    print("WARNING: OPENROUTER_KEY not found via settings. Using Mock Service.")
+    return MockLLMService()

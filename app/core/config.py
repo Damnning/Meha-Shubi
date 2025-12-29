@@ -1,3 +1,6 @@
+from typing import Optional
+import secrets
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 
@@ -14,6 +17,15 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME")
     S3_ENDPOINT_URL: str = os.getenv("S3_BUCKET_NAME")
     S3_REGION: str = os.getenv("S3_REGION")
+
+    OPENROUTER_KEY: str = os.getenv("OPENAI_KEY")
+    LLM_MODEL: str = os.getenv("LLM_MODEL")
+
+    VK_CLIENT_ID: Optional[str] = os.getenv("VK_CLIENT_ID")
+    VK_CLIENT_SECRET: Optional[str] = os.getenv("VK_CLIENT_ID")
+    YANDEX_CLIENT_ID: Optional[str] = os.getenv("VK_CLIENT_ID")
+    YANDEX_CLIENT_SECRET: Optional[str] = os.getenv("VK_CLIENT_ID")
+    SESSION_SECRET: str = secrets.token_urlsafe(15)
 
     @property
     def DATABASE_URL(self) -> str:

@@ -1,35 +1,27 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, asc
 from app.models.models import Product
-from app.schemas.product import ProductCreate, ProductFilter
-from app.services.llm_service import get_llm_service
-
+from app.schemas.product import ProductCreate, ProductFilter, ProductUpdate
 
 class ProductService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.llm_service = get_llm_service()
 
     async def create_product(self, schema: ProductCreate, image_url: str = None) -> Product:
-        """
-        1. Генерируем описание через AI.
-        2. Создаем запись в БД.
-        """
-        # Генерация описания (фоновая задача или await)
-        # Здесь используем await, но в реале лучше Celery/BackgroundTasks для долгих запросов
-        ai_description = await self.llm_service.generate_description(
-            schema.name,
-            schema.specs
-        )
-
         product_data = schema.model_dump()
-        product_data["description"] = ai_description
         product_data["image_url"] = image_url
+
+        # product_data["description"] берется напрямую из schema (от пользователя)
 
         product = Product(**product_data)
         self.db.add(product)
         await self.db.commit()
         await self.db.refresh(product)
+
+        # На всякий случай для Pydantic v2 и lazy loading
+        # Если вдруг schema вернет description, его и так вернет объект.
+        # Но если нужно что-то сложное, можно перезапросить, как мы делали в Orders.
+        # Для простого объекта refresh обычно достаточно.
         return product
 
     async def get_product_by_id(self, product_id: int) -> Product | None:
@@ -73,3 +65,27 @@ class ProductService:
 
         result = await self.db.execute(query)
         return result.scalars().all()
+
+    async def update_product(self, product_id: int, schema: ProductUpdate) -> Product | None:
+        product = await self.get_product_by_id(product_id)
+        if not product:
+            return None
+
+        # Обновляем только те поля, которые пришли
+        update_data = schema.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(product, key, value)
+
+        self.db.add(product)
+        await self.db.commit()
+        await self.db.refresh(product)
+        return product
+
+    async def delete_product(self, product_id: int) -> bool:
+        product = await self.get_product_by_id(product_id)
+        if not product:
+            return False
+
+        await self.db.delete(product)
+        await self.db.commit()
+        return True

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import set_committed_value  # <--- ВАЖНЫЙ ИМПОРТ
 
 from app.models.models import Category
 from app.schemas.category import CategoryCreate
@@ -15,21 +15,41 @@ class CategoryService:
         self.db.add(category)
         await self.db.commit()
         await self.db.refresh(category)
+
+        # ВМЕСТО category.children = []
+        # Мы жестко устанавливаем значение, минуя попытку загрузки из БД
+        set_committed_value(category, "children", [])
+
         return category
 
     async def get_all_categories(self) -> list[Category]:
         """
-        Возвращает дерево категорий.
-        Мы берем только корневые категории (где parent_id IS NULL),
-        а SQLAlchemy через selectinload рекурсивно подтянет children.
+        Загрузка дерева за 1 запрос + ручная сборка.
         """
-        query = (
-            select(Category)
-            .filter(Category.parent_id == None)  # Только корни
-            .options(selectinload(Category.children))  # Жадная загрузка детей
-        )
-        result = await self.db.execute(query)
-        return result.scalars().all()
+        # 1. Загружаем все категории
+        result = await self.db.execute(select(Category))
+        categories = result.scalars().all()
+
+        category_map = {c.id: c for c in categories}
+
+        # 2. Инициализируем пустые списки для всех (через set_committed_value)
+        for cat in categories:
+            set_committed_value(cat, "children", [])
+
+        # 3. Раскладываем по папкам
+        roots = []
+        for cat in categories:
+            if cat.parent_id is None:
+                roots.append(cat)
+            else:
+                parent = category_map.get(cat.parent_id)
+                if parent:
+                    parent.children.append(cat)
+
+        return roots
 
     async def get_category_by_id(self, category_id: int) -> Category | None:
-        return await self.db.get(Category, category_id)
+        category = await self.db.get(Category, category_id)
+        if category:
+            set_committed_value(category, "children", [])
+        return category
