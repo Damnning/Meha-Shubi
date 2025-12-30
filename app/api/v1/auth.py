@@ -5,10 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.user import UserCreate, UserRead, Token
 from app.core.security import create_access_token
-from app.services.auth_service import AuthService
-from app.services.user_service import UserService
 
-from starlette.requests import Request
+import uuid
+from app.schemas.telegram import TelegramAuth
+from app.services.telegram_service import validate_telegram_data
+from app.services.user_service import UserService
 router = APIRouter()
 
 
@@ -52,27 +53,34 @@ async def login(
     }
 
 
-@router.get("/login/{provider}")
-async def social_login(
-        provider: str,
-        request: Request,
+@router.post("/login/telegram", response_model=Token)
+async def telegram_login(
+        tg_data: TelegramAuth,
         db: AsyncSession = Depends(get_db)
 ):
-    """
-    Редирект на VK/Yandex.
-    """
-    service = AuthService(db)
-    return await service.get_login_redirect(provider, request, "")
+    # 1. Валидация подписи
+    if not validate_telegram_data(tg_data):
+        raise HTTPException(status_code=400, detail="Invalid Telegram data or signature")
 
+    # 2. Логика пользователя
+    # Telegram НЕ отдает Email. У нас есть два пути:
+    # А) Создать фейковый email (простой путь)
+    # Б) Добавить поле telegram_id в таблицу User (правильный путь)
 
-@router.get("/callback/{provider}", name="auth_callback")
-async def auth_callback(
-        provider: str,
-        request: Request,
-        db: AsyncSession = Depends(get_db)
-):
-    """
-    Обработка ответа от соцсети.
-    """
-    service = AuthService(db)
-    return await service.authenticate_social_user(provider, request)
+    # Идем по пути А (чтобы не менять БД прямо сейчас):
+    fake_email = f"{tg_data.id}@telegram.user"
+
+    service = UserService(db)
+    user = await service.get_by_email(fake_email)
+
+    if not user:
+        # Регистрируем нового
+        # Пароль рандомный, так как вход только через ТГ
+        user_in = UserCreate(email=fake_email, password=str(uuid.uuid4()))
+        user = await service.create_user(user_in)
+
+    # 3. Выдаем токен
+    return {
+        "access_token": create_access_token(user.id),
+        "token_type": "bearer",
+    }

@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     VK_CLIENT_SECRET: Optional[str] = os.getenv("VK_CLIENT_ID")
     YANDEX_CLIENT_ID: Optional[str] = os.getenv("VK_CLIENT_ID")
     YANDEX_CLIENT_SECRET: Optional[str] = os.getenv("VK_CLIENT_ID")
+
+    TG_BOT_TOKEN: Optional[str] = None
+
     SESSION_SECRET: str = secrets.token_urlsafe(15)
 
     @property
